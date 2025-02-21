@@ -49,8 +49,10 @@ def index():
 
 @app.route('/rockblock', methods=['POST'])
 def handle_rockblock():
-    imei = request.args.get('imei')
-    data = request.args.get('data')
+    data_json = request.get_json()  # Get JSON payload
+    imei = data_json.get('imei')
+    data = data_json.get('data')
+    # Rest of the code remains the same
 
     print(f"Received POST /rockblock - IMEI: {imei}, Data: {data}")
 
