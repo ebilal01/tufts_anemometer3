@@ -28,6 +28,9 @@
     <div style="margin-top: 10px; font-size: 16px;">
         Temperature: <span id="temp">0</span> °C
     </div>
+    <div style="margin-top: 10px; font-size: 16px;">
+        Pressure: <span id="pressure">0</span> mbar
+    </div>
 
     <div>
         <h2>Latest Message:</h2>
@@ -57,7 +60,7 @@
         const marker = L.marker([0, 0]).addTo(map);
 
         const updateMap = (historyData) => {
-            flightPath.setLatLngs([]);  // Clear existing points
+            flightPath.setLatLngs([]);
             historyData.forEach(data => {
                 if (data.latitude && data.longitude) {
                     const latLng = [data.latitude, data.longitude];
@@ -123,8 +126,13 @@
             Plotly.react('temperature-graph', tempGraphData, layout);
 
             const latest = historyData[historyData.length - 1];
-            if (latest && latest.temperature_cj_c !== undefined) {
-                document.getElementById("temp").textContent = latest.temperature_cj_c.toFixed(1);
+            if (latest) {
+                if (latest.temperature_cj_c !== undefined) {
+                    document.getElementById("temp").textContent = latest.temperature_cj_c.toFixed(1);
+                }
+                if (latest.pressure_mbar !== undefined) {
+                    document.getElementById("pressure").textContent = latest.pressure_mbar.toFixed(1);
+                }
             }
         };
 
@@ -136,6 +144,7 @@
                 updateMap(historyData);
                 updateGraph(historyData);
                 updateTemperatureGraph(historyData);
+                updateWindVectors(historyData);  // New function to update wind vectors
             }
         };
 
@@ -145,7 +154,7 @@
 
         window.onload = async () => {
             await fetchHistory();
-            setInterval(fetchAndUpdateAll, 1000);  // Update every 1 second
+            setInterval(fetchAndUpdateAll, 1000);
         };
 
         document.addEventListener("DOMContentLoaded", function () {
@@ -190,12 +199,58 @@
             let satellite;
             BABYLON.SceneLoader.Append("./static/models/", "SATELLITE.gltf", scene, () => {
                 satellite = scene.meshes[0];
+                satellite.position = BABYLON.Vector3.Zero();  // Center the satellite
+                console.log("Satellite loaded and centered");
             });
 
-            return scene;
+            // Create wind vector arrows
+            const createArrow = (name, color) => {
+                const arrow = BABYLON.MeshBuilder.CreateCylinder(name, {
+                    height: 1.5,  // Default length, will be scaled by velocity
+                    diameterTop: 0,
+                    diameterBottom: 0.2
+                }, scene);
+                const arrowMaterial = new BABYLON.StandardMaterial(name + "Material", scene);
+                arrowMaterial.diffuseColor = color;
+                arrow.material = arrowMaterial;
+                arrow.position = new BABYLON.Vector3(2, 0, 0);  // Initial position, will be updated
+                return arrow;
+            };
+
+            const windArrows = {
+                x: createArrow("windX", new BABYLON.Color3(1, 0, 0)),  // Red for vavg_1_mps (X)
+                y: createArrow("windY", new BABYLON.Color3(0, 1, 0)),  // Green for vavg_2_mps (Y)
+                z: createArrow("windZ", new BABYLON.Color3(0, 0, 1))   // Blue for vavg_3_mps (Z)
+            };
+
+            return { scene, windArrows };
         };
 
-        const scene = createScene();
+        const { scene, windArrows } = createScene();
+
+        const updateWindVectors = (historyData) => {
+            const latest = historyData[historyData.length - 1];
+            if (!latest) return;
+
+            const vX = latest.vavg_1_mps || 0;  // Wind velocity X (m/s)
+            const vY = latest.vavg_2_mps || 0;  // Wind velocity Y (m/s)
+            const vZ = latest.vavg_3_mps || 0;  // Wind velocity Z (m/s)
+
+            // Update X arrow (vavg_1_mps)
+            windArrows.x.scaling.y = Math.abs(vX) * 0.5;  // Scale length by velocity (0.5 factor for visibility)
+            windArrows.x.rotation = new BABYLON.Vector3(0, 0, vX >= 0 ? 0 : Math.PI);  // Point right or left
+            windArrows.x.position = new BABYLON.Vector3(vX >= 0 ? 2 : -2, 0, 0);  // Offset from center
+
+            // Update Y arrow (vavg_2_mps)
+            windArrows.y.scaling.y = Math.abs(vY) * 0.5;
+            windArrows.y.rotation = new BABYLON.Vector3(vY >= 0 ? -Math.PI / 2 : Math.PI / 2, 0, 0);  // Point up or down
+            windArrows.y.position = new BABYLON.Vector3(0, vY >= 0 ? 2 : -2, 0);
+
+            // Update Z arrow (vavg_3_mps)
+            windArrows.z.scaling.y = Math.abs(vZ) * 0.5;
+            windArrows.z.rotation = new BABYLON.Vector3(0, vZ >= 0 ? Math.PI / 2 : -Math.PI / 2, 0);  // Point forward or back
+            windArrows.z.position = new BABYLON.Vector3(0, 0, vZ >= 0 ? 2 : -2);
+        };
 
         engine.runRenderLoop(() => {
             scene.render();
@@ -204,7 +259,6 @@
         window.addEventListener("resize", () => {
             engine.resize();
         });
-
     </script>
 </body>
 </html>
