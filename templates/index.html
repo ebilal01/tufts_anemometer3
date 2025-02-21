@@ -15,7 +15,7 @@
 <body>
     <header>
         <div class="header-content">
-        <h3>Satellite Network Data Display</h3>
+        <h3>Flight Data Visualization</h3>
         <h6>Professor Robert White Ph.D.</h6>
     </div>
     <nav>
@@ -23,12 +23,12 @@
             <li><a href="https://sites.tufts.edu/senselab/research/#anemometer">MSS Lab Site</a></li>
         </ul>
     </nav></header>
-    <h1>Flight Data Visualization</h1>
     <div id="map" style="height: 500px; width: 100%;"></div>
     <div id="graph" style="height: 300px; width: 100%; margin-top: 20px;"></div>
     <canvas id="renderCanvas" touch-action="none" style="width: 100%; height: 300px;"></canvas>
     <div id="temperature-graph" style="height: 300px; width: 100%; margin-top: 20px;"></div>
 
+   <div style="text-align: center;">
     <div style="margin-top: 10px; font-size: 16px;">
         Latitude: <span id="lat">0</span>
     </div>
@@ -49,8 +49,7 @@
 
     <div>
         <h2>Message History:</h2>
-        <ul id="message-history">
-        </ul>
+        <ul id="message-history" style="display: inline-block; text-align: left;"></ul>
     </div>
 
     <div id="download-section" style="margin-top: 20px;">
@@ -58,6 +57,7 @@
             Download History as CSV
         </a>
     </div>
+</div>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 
     <script>
