@@ -48,7 +48,7 @@
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 
     <script>
-        const BASE_URL = "https://tufts-anemometer3.onrender.com";  // Ensure this matches your deployed URL
+        const BASE_URL = "https://tufts-anemometer3.onrender.com";
 
         const map = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
@@ -56,26 +56,30 @@
         const flightPath = L.polyline([], { color: 'red' }).addTo(map);
         const marker = L.marker([0, 0]).addTo(map);
 
-        const updateMap = (latitude, longitude) => {
-            if (latitude === undefined || longitude === undefined) return;
-
-            const latLng = [latitude, longitude];
-            flightPath.addLatLng(latLng);
-            marker.setLatLng(latLng);
-
-            if (flightPath.getLatLngs().length > 1) {
-                map.fitBounds(flightPath.getBounds());
+        const updateMap = (historyData) => {
+            flightPath.setLatLngs([]);  // Clear existing points
+            historyData.forEach(data => {
+                if (data.latitude && data.longitude) {
+                    const latLng = [data.latitude, data.longitude];
+                    flightPath.addLatLng(latLng);
+                }
+            });
+            const latest = historyData[historyData.length - 1];
+            if (latest && latest.latitude && latest.longitude) {
+                marker.setLatLng([latest.latitude, latest.longitude]);
+                document.getElementById('lat').textContent = latest.latitude.toFixed(6);
+                document.getElementById('lon').textContent = latest.longitude.toFixed(6);
+                if (flightPath.getLatLngs().length > 1) {
+                    map.fitBounds(flightPath.getBounds());
+                }
             }
-
-            document.getElementById('lat').textContent = latitude.toFixed(6);
-            document.getElementById('lon').textContent = longitude.toFixed(6);
         };
 
-        const updateGraph = (data) => {
-            if (!data || !data.sent_time || !data.altitude) return;
+        const updateGraph = (historyData) => {
+            const timestamps = historyData.map(data => data.sent_time).filter(t => t);
+            const altitudes = historyData.map(data => data.altitude).filter(a => a !== undefined);
 
-            const timestamps = Array.isArray(data.sent_time) ? data.sent_time : [data.sent_time];
-            const altitudes = Array.isArray(data.altitude) ? data.altitude : [data.altitude];
+            if (timestamps.length === 0 || altitudes.length === 0) return;
 
             const graphData = [{
                 x: timestamps,
@@ -95,11 +99,11 @@
             Plotly.react('graph', graphData, layout);
         };
 
-        const updateTemperatureGraph = (data) => {
-            if (!data.sent_time || data.temperature_cj_c === undefined) return;
+        const updateTemperatureGraph = (historyData) => {
+            const timestamps = historyData.map(data => data.sent_time).filter(t => t);
+            const temperatures = historyData.map(data => data.temperature_cj_c).filter(t => t !== undefined);
 
-            const timestamps = Array.isArray(data.sent_time) ? data.sent_time : [data.sent_time];
-            const temperatures = Array.isArray(data.temperature_cj_c) ? data.temperature_cj_c : [data.temperature_cj_c];
+            if (timestamps.length === 0 || temperatures.length === 0) return;
 
             const tempGraphData = [{
                 x: timestamps,
@@ -117,68 +121,37 @@
             };
 
             Plotly.react('temperature-graph', tempGraphData, layout);
+
+            const latest = historyData[historyData.length - 1];
+            if (latest && latest.temperature_cj_c !== undefined) {
+                document.getElementById("temp").textContent = latest.temperature_cj_c.toFixed(1);
+            }
         };
 
-        const fetchData = async () => {
-            const response = await fetch(`${BASE_URL}/live-data`);
-            const data = await response.json();
+        const fetchAndUpdateAll = async () => {
+            const response = await fetch(`${BASE_URL}/history`);
+            const historyData = await response.json();
 
-            if (data.latitude !== undefined && data.longitude !== undefined) {
-                updateMap(data.latitude, data.longitude);
-            }
-
-            if (data.sent_time && data.altitude) {
-                updateGraph(data);
-            }
-
-            if (data.sent_time && data.temperature_cj_c !== undefined) {
-                updateTemperatureGraph(data);
-                document.getElementById("temp").textContent = data.temperature_cj_c.toFixed(1);
+            if (historyData.length > 0) {
+                updateMap(historyData);
+                updateGraph(historyData);
+                updateTemperatureGraph(historyData);
             }
         };
 
         const fetchHistory = async () => {
-            const response = await fetch(`${BASE_URL}/history`);
-            const history = await response.json();
-
-            history.forEach((data) => {
-                if (data.latitude && data.longitude) {
-                    updateMap(data.latitude, data.longitude);
-                }
-
-                if (data.sent_time && data.altitude) {  // Changed 'timestamps' and 'altitudes' to match live-data endpoint
-                    updateGraph(data);
-                }
-            });
+            await fetchAndUpdateAll();
         };
 
         window.onload = async () => {
             await fetchHistory();
-            fetchData();
-            setInterval(fetchData, 5000);
+            setInterval(fetchAndUpdateAll, 1000);  // Update every 1 second
         };
 
         document.addEventListener("DOMContentLoaded", function () {
             fetchMessageHistory();
             fetchLatestMessage();
         });
-
-        const updateLiveData = async () => {
-            const response = await fetch(`${BASE_URL}/live-data`);
-            const data = await response.json();
-            updateMap(data.latitude, data.longitude);
-
-            if (data.sent_time && data.altitude) {
-                updateGraph(data);
-            }
-
-            if (data.temperature_cj_c !== undefined) {
-                document.getElementById("temp").textContent = data.temperature_cj_c.toFixed(1);
-                updateTemperatureGraph(data);
-            }
-        };
-
-        setInterval(updateLiveData, 1000);
 
         async function fetchLatestMessage() {
             const response = await fetch(`${BASE_URL}/live-data`);
@@ -218,16 +191,6 @@
             BABYLON.SceneLoader.Append("./static/models/", "SATELLITE.gltf", scene, () => {
                 satellite = scene.meshes[0];
             });
-
-            const createArrow = (direction, color) => {
-                const arrow = BABYLON.MeshBuilder.CreateCylinder("arrow", { height: 1.5, diameterTop: 0, diameterBottom: 0.2 }, scene);
-                const arrowMaterial = new BABYLON.StandardMaterial("arrowMat", scene);
-                arrowMaterial.diffuseColor = color;
-                arrow.material = arrowMaterial;
-                arrow.rotation.x = Math.PI / 2;
-                arrow.position = direction;
-                return arrow;
-            };
 
             return scene;
         };
