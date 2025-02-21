@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Data Visualization</title>
+    <link rel="stylesheet" href="/static/format.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css">
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.js"></script>
+    <script src="https://cdn.babylonjs.com/earcut.min.js"></script>
+</head>
+<body>
+    <h1>Flight Data Visualization</h1>
+    <div id="map" style="height: 500px; width: 100%;"></div>
+    <div id="graph" style="height: 300px; width: 100%; margin-top: 20px;"></div>
+    <canvas id="renderCanvas" touch-action="none" style="width: 100%; height: 300px;"></canvas>
+    <div id="temperature-graph" style="height: 300px; width: 100%; margin-top: 20px;"></div>
+
+    <div style="margin-top: 10px; font-size: 16px;">
+        Latitude: <span id="lat">0</span>
+    </div>
+    <div style="margin-top: 10px; font-size: 16px;">
+        Longitude: <span id="lon">0</span>
+    </div>
+    <div style="margin-top: 10px; font-size: 16px;">
+        Temperature: <span id="temp">0</span> °C
+    </div>
+
+    <div>
+        <h2>Latest Message:</h2>
+        <p id="latest-message">No messages yet.</p>
+    </div>
+
+    <div>
+        <h2>Message History:</h2>
+        <ul id="message-history">
+        </ul>
+    </div>
+
+    <div id="download-section" style="margin-top: 20px;">
+        <a href="/download-history" class="btn" download style="text-decoration: none; color: white; background-color: #007BFF; padding: 10px 15px; border-radius: 5px; font-size: 16px;">
+            Download History as CSV
+        </a>
+    </div>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <script>
+        const BASE_URL = "https://tufts-anemometer2.onrender.com";  // Ensure this matches your deployed URL
+
+        const map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+        const flightPath = L.polyline([], { color: 'red' }).addTo(map);
+        const marker = L.marker([0, 0]).addTo(map);
+
+        const updateMap = (latitude, longitude) => {
+            if (latitude === undefined || longitude === undefined) return;
+
+            const latLng = [latitude, longitude];
+            flightPath.addLatLng(latLng);
+            marker.setLatLng(latLng);
+
+            if (flightPath.getLatLngs().length > 1) {
+                map.fitBounds(flightPath.getBounds());
+            }
+
+            document.getElementById('lat').textContent = latitude.toFixed(6);
+            document.getElementById('lon').textContent = longitude.toFixed(6);
+        };
+
+        const updateGraph = (data) => {
+            if (!data || !data.sent_time || !data.altitude) return;
+
+            const timestamps = Array.isArray(data.sent_time) ? data.sent_time : [data.sent_time];
+            const altitudes = Array.isArray(data.altitude) ? data.altitude : [data.altitude];
+
+            const graphData = [{
+                x: timestamps,
+                y: altitudes,
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: 'blue' },
+                name: "Altitude (m)"
+            }];
+
+            const layout = {
+                title: "Altitude Over Time",
+                xaxis: { title: "Time" },
+                yaxis: { title: "Altitude (m)" }
+            };
+
+            Plotly.react('graph', graphData, layout);
+        };
+
+        const updateTemperatureGraph = (data) => {
+            if (!data.sent_time || data.temperature_cj_c === undefined) return;
+
+            const timestamps = Array.isArray(data.sent_time) ? data.sent_time : [data.sent_time];
+            const temperatures = Array.isArray(data.temperature_cj_c) ? data.temperature_cj_c : [data.temperature_cj_c];
+
+            const tempGraphData = [{
+                x: timestamps,
+                y: temperatures,
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: 'red' },
+                name: "Temperature (°C)"
+            }];
+
+            const layout = {
+                title: "Temperature Over Time",
+                xaxis: { title: "Time" },
+                yaxis: { title: "Temperature (°C)" }
+            };
+
+            Plotly.react('temperature-graph', tempGraphData, layout);
+        };
+
+        const fetchData = async () => {
+            const response = await fetch(`${BASE_URL}/live-data`);
+            const data = await response.json();
+
+            if (data.latitude !== undefined && data.longitude !== undefined) {
+                updateMap(data.latitude, data.longitude);
+            }
+
+            if (data.sent_time && data.altitude) {
+                updateGraph(data);
+            }
+
+            if (data.sent_time && data.temperature_cj_c !== undefined) {
+                updateTemperatureGraph(data);
+                document.getElementById("temp").textContent = data.temperature_cj_c.toFixed(1);
+            }
+        };
+
+        const fetchHistory = async () => {
+            const response = await fetch(`${BASE_URL}/history`);
+            const history = await response.json();
+
+            history.forEach((data) => {
+                if (data.latitude && data.longitude) {
+                    updateMap(data.latitude, data.longitude);
+                }
+
+                if (data.sent_time && data.altitude) {  // Changed 'timestamps' and 'altitudes' to match live-data endpoint
+                    updateGraph(data);
+                }
+            });
+        };
+
+        window.onload = async () => {
+            await fetchHistory();
+            fetchData();
+            setInterval(fetchData, 5000);
+        };
+
+        document.addEventListener("DOMContentLoaded", function () {
+            fetchMessageHistory();
+            fetchLatestMessage();
+        });
+
+        const updateLiveData = async () => {
+            const response = await fetch(`${BASE_URL}/live-data`);
+            const data = await response.json();
+            updateMap(data.latitude, data.longitude);
+
+            if (data.sent_time && data.altitude) {
+                updateGraph(data);
+            }
+
+            if (data.temperature_cj_c !== undefined) {
+                document.getElementById("temp").textContent = data.temperature_cj_c.toFixed(1);
+                updateTemperatureGraph(data);
+            }
+        };
+
+        setInterval(updateLiveData, 1000);
+
+        async function fetchLatestMessage() {
+            const response = await fetch(`${BASE_URL}/live-data`);
+            const data = await response.json();
+
+            if (data.message) {
+                document.getElementById('latest-message').textContent = `Message: ${data.message}`;
+            } else {
+                document.getElementById('latest-message').textContent = `Received structured data at ${data.received_time}`;
+            }
+        }
+
+        async function fetchMessageHistory() {
+            const response = await fetch(`${BASE_URL}/message-history`);
+            const historyData = await response.json();
+
+            const historyList = document.getElementById('message-history');
+            historyList.innerHTML = '';
+
+            historyData.forEach((msg) => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `(${msg.received_time}) Msg: ${msg.message} | Lat: ${msg.latitude}, Lon: ${msg.longitude}`;
+                historyList.appendChild(listItem);
+            });
+        }
+
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+
+        const createScene = () => {
+            const scene = new BABYLON.Scene(engine);
+            const camera = new BABYLON.ArcRotateCamera("camera", Math.PI / 2, Math.PI / 4, 20, BABYLON.Vector3.Zero(), scene);
+            camera.attachControl(canvas, true);
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(1, 1, 0), scene);
+
+            let satellite;
+            BABYLON.SceneLoader.Append("./static/models/", "SATELLITE.gltf", scene, () => {
+                satellite = scene.meshes[0];
+            });
+
+            const createArrow = (direction, color) => {
+                const arrow = BABYLON.MeshBuilder.CreateCylinder("arrow", { height: 1.5, diameterTop: 0, diameterBottom: 0.2 }, scene);
+                const arrowMaterial = new BABYLON.StandardMaterial("arrowMat", scene);
+                arrowMaterial.diffuseColor = color;
+                arrow.material = arrowMaterial;
+                arrow.rotation.x = Math.PI / 2;
+                arrow.position = direction;
+                return arrow;
+            };
+
+            return scene;
+        };
+
+        const scene = createScene();
+
+        engine.runRenderLoop(() => {
+            scene.render();
+        });
+
+        window.addEventListener("resize", () => {
+            engine.resize();
+        });
+
+    </script>
+</body>
+</html>
