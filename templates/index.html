@@ -15,49 +15,51 @@
 <body>
     <header>
         <div class="header-content">
-        <h3>Flight Data Visualization</h3>
-        <h6>Professor Robert White Ph.D.</h6>
-    </div>
-    <nav>
-        <ul class="nav_links">
-            <li><a href="https://sites.tufts.edu/senselab/research/#anemometer">MSS Lab Site</a></li>
-        </ul>
-    </nav></header>
+            <h3>Flight Data Visualization</h3>
+            <h6>Professor Robert White Ph.D.</h6>
+        </div>
+        <nav>
+            <ul class="nav_links">
+                <li><a href="https://sites.tufts.edu/senselab/research/#anemometer">MSS Lab Site</a></li>
+            </ul>
+        </nav>
+    </header>
     <div id="map" style="height: 500px; width: 100%;"></div>
     <div id="graph" style="height: 300px; width: 100%; margin-top: 20px;"></div>
     <canvas id="renderCanvas" touch-action="none" style="width: 100%; height: 300px;"></canvas>
     <div id="temperature-graph" style="height: 300px; width: 100%; margin-top: 20px;"></div>
 
-   <div style="text-align: center;">
-    <div style="margin-top: 10px; font-size: 16px;">
-        Latitude: <span id="lat">0</span>
-    </div>
-    <div style="margin-top: 10px; font-size: 16px;">
-        Longitude: <span id="lon">0</span>
-    </div>
-    <div style="margin-top: 10px; font-size: 16px;">
-        Temperature: <span id="temp">0</span> °C
-    </div>
-    <div style="margin-top: 10px; font-size: 16px;">
-        Pressure: <span id="pressure">0</span> mbar
+    <div style="text-align: center;">
+        <div style="margin-top: 10px; font-size: 16px;">
+            Latitude: <span id="lat">0</span>
+        </div>
+        <div style="margin-top: 10px; font-size: 16px;">
+            Longitude: <span id="lon">0</span>
+        </div>
+        <div style="margin-top: 10px; font-size: 16px;">
+            Temperature: <span id="temp">0</span> °C
+        </div>
+        <div style="margin-top: 10px; font-size: 16px;">
+            Pressure: <span id="pressure">0</span> mbar
+        </div>
+
+        <div>
+            <h2>Latest Message:</h2>
+            <p id="latest-message">No messages yet.</p>
+        </div>
+
+        <div>
+            <h2>Message History:</h2>
+            <ul id="message-history" style="display: inline-block; text-align: left;"></ul>
+        </div>
+
+        <div id="download-section" style="margin-top: 20px;">
+            <a href="/download-history" class="btn" download style="text-decoration: none; color: white; background-color: #007BFF; padding: 10px 15px; border-radius: 5px; font-size: 16px;">
+                Download History as CSV
+            </a>
+        </div>
     </div>
 
-    <div>
-        <h2>Latest Message:</h2>
-        <p id="latest-message">No messages yet.</p>
-    </div>
-
-    <div>
-        <h2>Message History:</h2>
-        <ul id="message-history" style="display: inline-block; text-align: left;"></ul>
-    </div>
-
-    <div id="download-section" style="margin-top: 20px;">
-        <a href="/download-history" class="btn" download style="text-decoration: none; color: white; background-color: #007BFF; padding: 10px 15px; border-radius: 5px; font-size: 16px;">
-            Download History as CSV
-        </a>
-    </div>
-</div>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 
     <script>
@@ -147,14 +149,21 @@
         };
 
         const fetchAndUpdateAll = async () => {
-            const response = await fetch(`${BASE_URL}/history`);
-            const historyData = await response.json();
-
-            if (historyData.length > 0) {
-                updateMap(historyData);
-                updateGraph(historyData);
-                updateTemperatureGraph(historyData);
-                updateWindVectors(historyData);  // New function to update wind vectors
+            try {
+                const response = await fetch(`${BASE_URL}/history`);
+                if (!response.ok) {
+                    console.error(`Fetch failed with status: ${response.status}`);
+                    return;
+                }
+                const historyData = await response.json();
+                if (historyData.length > 0) {
+                    updateMap(historyData);
+                    updateGraph(historyData);
+                    updateTemperatureGraph(historyData);
+                    updateWindVectors(historyData);
+                }
+            } catch (error) {
+                console.error("Error fetching history:", error);
             }
         };
 
@@ -173,28 +182,36 @@
         });
 
         async function fetchLatestMessage() {
-            const response = await fetch(`${BASE_URL}/live-data`);
-            const data = await response.json();
-
-            if (data.message) {
-                document.getElementById('latest-message').textContent = `Message: ${data.message}`;
-            } else {
-                document.getElementById('latest-message').textContent = `Received structured data at ${data.received_time}`;
+            try {
+                const response = await fetch(`${BASE_URL}/live-data`);
+                if (!response.ok) return;
+                const data = await response.json();
+                if (data.message) {
+                    document.getElementById('latest-message').textContent = `Message: ${data.message}`;
+                } else {
+                    document.getElementById('latest-message').textContent = `Received structured data at ${data.received_time}`;
+                }
+            } catch (error) {
+                console.error("Error fetching latest message:", error);
             }
         }
 
         async function fetchMessageHistory() {
-            const response = await fetch(`${BASE_URL}/message-history`);
-            const historyData = await response.json();
+            try {
+                const response = await fetch(`${BASE_URL}/message-history`);
+                if (!response.ok) return;
+                const historyData = await response.json();
 
-            const historyList = document.getElementById('message-history');
-            historyList.innerHTML = '';
-
-            historyData.forEach((msg) => {
-                const listItem = document.createElement('li');
-                listItem.textContent = `(${msg.received_time}) Msg: ${msg.message} | Lat: ${msg.latitude}, Lon: ${msg.longitude}`;
-                historyList.appendChild(listItem);
-            });
+                const historyList = document.getElementById('message-history');
+                historyList.innerHTML = '';
+                historyData.forEach((msg) => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = `(${msg.received_time}) Msg: ${msg.message} | Lat: ${msg.latitude}, Lon: ${msg.longitude}`;
+                    historyList.appendChild(listItem);
+                });
+            } catch (error) {
+                console.error("Error fetching message history:", error);
+            }
         }
 
         const canvas = document.getElementById("renderCanvas");
@@ -209,28 +226,27 @@
             let satellite;
             BABYLON.SceneLoader.Append("./static/models/", "SATELLITE.gltf", scene, () => {
                 satellite = scene.meshes[0];
-                satellite.position = BABYLON.Vector3.Zero();  // Center the satellite
+                satellite.position = BABYLON.Vector3.Zero();
                 console.log("Satellite loaded and centered");
             });
 
-            // Create wind vector arrows
             const createArrow = (name, color) => {
                 const arrow = BABYLON.MeshBuilder.CreateCylinder(name, {
-                    height: 1.5,  // Default length, will be scaled by velocity
+                    height: 1.5,
                     diameterTop: 0,
                     diameterBottom: 0.2
                 }, scene);
                 const arrowMaterial = new BABYLON.StandardMaterial(name + "Material", scene);
                 arrowMaterial.diffuseColor = color;
                 arrow.material = arrowMaterial;
-                arrow.position = new BABYLON.Vector3(2, 0, 0);  // Initial position, will be updated
+                arrow.position = new BABYLON.Vector3(2, 0, 0);
                 return arrow;
             };
 
             const windArrows = {
-                x: createArrow("windX", new BABYLON.Color3(1, 0, 0)),  // Red for vavg_1_mps (X)
-                y: createArrow("windY", new BABYLON.Color3(0, 1, 0)),  // Green for vavg_2_mps (Y)
-                z: createArrow("windZ", new BABYLON.Color3(0, 0, 1))   // Blue for vavg_3_mps (Z)
+                x: createArrow("windX", new BABYLON.Color3(1, 0, 0)),
+                y: createArrow("windY", new BABYLON.Color3(0, 1, 0)),
+                z: createArrow("windZ", new BABYLON.Color3(0, 0, 1))
             };
 
             return { scene, windArrows };
@@ -242,23 +258,20 @@
             const latest = historyData[historyData.length - 1];
             if (!latest) return;
 
-            const vX = latest.vavg_1_mps || 0;  // Wind velocity X (m/s)
-            const vY = latest.vavg_2_mps || 0;  // Wind velocity Y (m/s)
-            const vZ = latest.vavg_3_mps || 0;  // Wind velocity Z (m/s)
+            const vX = latest.vavg_1_mps || 0;
+            const vY = latest.vavg_2_mps || 0;
+            const vZ = latest.vavg_3_mps || 0;
 
-            // Update X arrow (vavg_1_mps)
-            windArrows.x.scaling.y = Math.abs(vX) * 0.5;  // Scale length by velocity (0.5 factor for visibility)
-            windArrows.x.rotation = new BABYLON.Vector3(0, 0, vX >= 0 ? 0 : Math.PI);  // Point right or left
-            windArrows.x.position = new BABYLON.Vector3(vX >= 0 ? 2 : -2, 0, 0);  // Offset from center
+            windArrows.x.scaling.y = Math.abs(vX) * 0.5;
+            windArrows.x.rotation = new BABYLON.Vector3(0, 0, vX >= 0 ? 0 : Math.PI);
+            windArrows.x.position = new BABYLON.Vector3(vX >= 0 ? 2 : -2, 0, 0);
 
-            // Update Y arrow (vavg_2_mps)
             windArrows.y.scaling.y = Math.abs(vY) * 0.5;
-            windArrows.y.rotation = new BABYLON.Vector3(vY >= 0 ? -Math.PI / 2 : Math.PI / 2, 0, 0);  // Point up or down
+            windArrows.y.rotation = new BABYLON.Vector3(vY >= 0 ? -Math.PI / 2 : Math.PI / 2, 0, 0);
             windArrows.y.position = new BABYLON.Vector3(0, vY >= 0 ? 2 : -2, 0);
 
-            // Update Z arrow (vavg_3_mps)
             windArrows.z.scaling.y = Math.abs(vZ) * 0.5;
-            windArrows.z.rotation = new BABYLON.Vector3(0, vZ >= 0 ? Math.PI / 2 : -Math.PI / 2, 0);  // Point forward or back
+            windArrows.z.rotation = new BABYLON.Vector3(0, vZ >= 0 ? Math.PI / 2 : -Math.PI / 2, 0);
             windArrows.z.position = new BABYLON.Vector3(0, 0, vZ >= 0 ? 2 : -2);
         };
 
